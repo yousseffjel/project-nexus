@@ -1,0 +1,21 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "Supabase",
+    "supabase",
+    "SUPABASE",
+    "VARCHAR",
+    "ecommerce",
+    "nextecommerce",
+    "logomark",
+    "AMOLED",
+    "whsec",
+    "ilike",
+    "eslintrc",
+    "tailwindcss",
+    "postcss",
+    "clsx"
+  ],
+  "ignorePaths": ["node_modules/**", "dist/**", ".next/**", "build/**"]
+}
