@@ -38,6 +38,16 @@ vercel --prod
 2. **Vercel**: Connect GitHub repo at vercel.com
 3. **Deploy**: Automatic deployment on every push
 
+### **🔓 Make Deployment Public**
+
+After deployment, make your site publicly accessible:
+
+1. **Go to**: https://vercel.com/dashboard
+2. **Select**: Your `project-nexus` project
+3. **Settings** → **Deployment Protection**
+4. **Change** from "Vercel Authentication" to **"Off"**
+5. **Save** changes ✅
+
 ### **Environment Variables for Vercel**
 
 ```env

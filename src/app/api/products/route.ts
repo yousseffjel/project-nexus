@@ -1,143 +1,136 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase";
 import { apiRateLimit, getClientId } from "@/lib/rate-limit";
 
-// Input validation schema
-interface ProductQueryParams {
-  category?: string;
-  search?: string;
-  limit: number;
-  offset: number;
+interface Product {
+  id: number;
+  name: string;
+  price: number;
+  image: string;
+  category: string;
+  description: string;
+  brand: string;
+  rating: number;
+  reviews: number;
+  in_stock: boolean;
 }
 
-function validateAndSanitizeParams(
-  searchParams: URLSearchParams
-): ProductQueryParams {
-  // Sanitize and validate category parameter
-  const category = searchParams.get("category")?.trim().toLowerCase();
-  const validatedCategory =
-    category && category.length <= 50 ? category : undefined;
+const MOCK_PRODUCTS: Product[] = [
+  {
+    id: 1,
+    name: "Premium Wireless Headphones",
+    price: 299.99,
+    image:
+      "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500&h=500&fit=crop",
+    category: "electronics",
+    description: "High-quality wireless headphones with noise cancellation.",
+    brand: "TechBrand",
+    rating: 4.5,
+    reviews: 1250,
+    in_stock: true,
+  },
+  {
+    id: 2,
+    name: "Smart Watch",
+    price: 199.99,
+    image:
+      "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&h=500&fit=crop",
+    category: "electronics",
+    description: "Feature-rich smartwatch with health monitoring.",
+    brand: "SmartTech",
+    rating: 4.3,
+    reviews: 890,
+    in_stock: true,
+  },
+  {
+    id: 3,
+    name: "Designer Laptop Bag",
+    price: 89.99,
+    image:
+      "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=500&h=500&fit=crop",
+    category: "accessories",
+    description: "Stylish and functional laptop bag for professionals.",
+    brand: "StyleCorp",
+    rating: 4.7,
+    reviews: 456,
+    in_stock: true,
+  },
+  {
+    id: 4,
+    name: "Organic Cotton T-Shirt",
+    price: 29.99,
+    image:
+      "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=500&h=500&fit=crop",
+    category: "clothing",
+    description: "Comfortable organic cotton t-shirt in various colors.",
+    brand: "EcoWear",
+    rating: 4.4,
+    reviews: 234,
+    in_stock: true,
+  },
+];
 
-  // Sanitize and validate search parameter
-  const search = searchParams.get("search")?.trim();
-  const validatedSearch =
-    search && search.length <= 100
-      ? search.replace(/[<>]/g, "") // Basic XSS prevention
-      : undefined;
-
-  // Validate numeric parameters with safe limits
-  const limitParam = searchParams.get("limit");
-  const offsetParam = searchParams.get("offset");
-
-  const limit = limitParam
-    ? Math.min(Math.max(parseInt(limitParam), 1), 100) // Limit between 1-100
-    : 20;
-
-  const offset = offsetParam
-    ? Math.max(parseInt(offsetParam), 0) // Non-negative offset
-    : 0;
-
-  return {
-    category: validatedCategory,
-    search: validatedSearch,
-    limit,
-    offset,
-  };
-}
-
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
-    // Rate limiting check
     const clientId = getClientId(request);
-    const rateCheck = apiRateLimit.check(request, 30, clientId); // 30 requests per minute per IP
+    const rateLimitResult = apiRateLimit.check(request, 30, clientId);
 
-    if (!rateCheck.success) {
-      console.warn(`Rate limit exceeded for IP: ${clientId}`);
+    if (!rateLimitResult.success) {
       return NextResponse.json(
         {
-          error: "Too many requests",
-          message: "Please wait before making more requests",
+          error: "Rate limit exceeded",
+          message: "Too many requests. Please try again later.",
         },
         {
           status: 429,
           headers: {
-            "X-RateLimit-Limit": rateCheck.limit.toString(),
-            "X-RateLimit-Remaining": rateCheck.remaining.toString(),
-            "X-RateLimit-Reset": rateCheck.reset.toISOString(),
+            "Retry-After": "60",
+            "X-RateLimit-Limit": "30",
+            "X-RateLimit-Remaining": rateLimitResult.remaining.toString(),
           },
         }
       );
     }
 
-    // Validate and sanitize input parameters
     const { searchParams } = new URL(request.url);
-    const params = validateAndSanitizeParams(searchParams);
-    const { category, search, limit, offset } = params;
+    const category = searchParams.get("category");
+    const search = searchParams.get("search");
+    const limit = Math.min(parseInt(searchParams.get("limit") || "10", 10), 50);
+    const offset = Math.max(parseInt(searchParams.get("offset") || "0", 10), 0);
 
-    const supabase = createServerClient();
-
-    let query = supabase
-      .from("products")
-      .select(
-        `
-        *,
-        brand:brands(*),
-        category:categories(*),
-        images:product_images(*),
-        reviews:product_reviews(rating)
-      `
-      )
-      .eq("is_active", true)
-      .range(offset, offset + limit - 1);
+    let filteredProducts = MOCK_PRODUCTS;
 
     if (category) {
-      query = query.eq("category.slug", category);
-    }
-
-    if (search) {
-      query = query.or(`name.ilike.%${search}%, description.ilike.%${search}%`);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error("Database error:", error);
-      return NextResponse.json(
-        { error: "Failed to fetch products" },
-        { status: 500 }
+      filteredProducts = filteredProducts.filter(
+        (product) => product.category.toLowerCase() === category.toLowerCase()
       );
     }
 
-    // Process data to include calculated fields
-    const processedData =
-      data?.map((product) => {
-        const ratings = product.reviews || [];
-        const avgRating =
-          ratings.length > 0
-            ? ratings.reduce(
-                (sum: number, review: { rating: number }) =>
-                  sum + review.rating,
-                0
-              ) / ratings.length
-            : 0;
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filteredProducts = filteredProducts.filter(
+        (product) =>
+          product.name.toLowerCase().includes(searchLower) ||
+          product.description.toLowerCase().includes(searchLower)
+      );
+    }
 
-        return {
-          ...product,
-          rating: Math.round(avgRating * 10) / 10,
-          reviewCount: ratings.length,
-          image: product.images?.[0]?.image_url || "/placeholder.jpg",
-        };
-      }) || [];
+    const paginatedProducts = filteredProducts.slice(offset, offset + limit);
 
     return NextResponse.json({
-      products: processedData,
-      count: processedData.length,
+      products: paginatedProducts,
+      pagination: {
+        total: filteredProducts.length,
+        limit,
+        offset,
+        hasMore: offset + limit < filteredProducts.length,
+      },
     });
   } catch (error) {
-    console.error("API error:", error);
+    console.error("Products API Error:", error);
+
     return NextResponse.json(
-      { error: "Invalid request parameters" },
-      { status: 400 }
+      { error: "Internal server error" },
+      { status: 500 }
     );
   }
 }
